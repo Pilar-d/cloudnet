@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel — Seguridad & Workflow</title>
+
+  <!-- Leaflet Mapa -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    :root {
+      --bg: #0f1724;
+      --muted: #9ba3b5;
+      --accent1: #7c3aed;
+      --accent2: #06b6d4;
+      --radius: 14px;
+      --shadow: 0 6px 26px rgba(0,0,0,.35);
+      font-family: Inter, system-ui, sans-serif;
+      color-scheme: dark;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background: var(--bg);
+      color: white;
+      padding: 20px;
+      transition: filter .3s;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+      filter: blur(2px);
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+
+    select, input {
+      background: #101b2b;
+      border: 1px solid #2c3445;
+      color: white;
+      padding: 10px;
+      border-radius: var(--radius);
+      min-width: 150px;
+    }
+    
+    table {
+      width: 100%;
+      margin-top: 10px;
+      border-collapse: collapse;
+      background: #0d1a29;
+      overflow: hidden;
+      border-radius: var(--radius);
+    }
+    
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #1e293b;
+    }
+    
+    th {
+      background: #162235;
+      color: var(--muted);
+    }
+    
+    .status {
+      padding: 5px 10px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .pendiente {
+      background: #7c3aed33;
+      color: #c9afff;
+    }
+    
+    .progreso {
+      background: #06b6d433;
+      color: #8ff5ff;
+    }
+    
+    .completada {
+      background: #10b98133;
+      color: #63f5b6;
+    }
+
+    button {
+      cursor: pointer;
+      border-radius: var(--radius);
+    }
+    
+    .btn-editar {
+      background: var(--accent1);
+      padding: 6px 10px;
+      border: none;
+      color: white;
+    }
+    
+    .btn-eliminar {
+      background: #dc2626;
+      padding: 6px 10px;
+      border: none;
+      color: white;
+    }
+    
+    .btn-agregar {
+      background: var(--accent1);
+      padding: 10px 16px;
+      border: none;
+      font-weight: 700;
+      color: white;
+      margin-top: 12px;
+    }
+
+    #mapa {
+      width: 100%;
+      height: 400px;
+      border-radius: 14px;
+      margin-top: 10px;
+    }
+    
+    #contenedorCamara {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      background: #000;
+      border-radius: 16px;
+      padding: 10px;
+    }
+    
+    #camaraSimulada {
+      width: 100%;
+      max-width: 520px;
+      height: 300px;
+      object-fit: cover;
+      border-radius: 12px;
+      animation: vibrar .15s infinite;
+      filter: brightness(.9) contrast(1.2);
+    }
+    
+    @keyframes vibrar {
+      50% {
+        transform: translate(1px, -1px);
+      }
+    }
+
+    /* ✨ MODALES CON TRANSICIONES */
+    .modal, .modalDepto {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.75);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 0;
+      transition: opacity .3s ease;
+    }
+    
+    .modal.show, .modalDepto.show {
+      display: flex;
+      opacity: 1;
+    }
+
+    .modal-content, .modalDepto-content {
+      background: #162235;
+      padding: 20px;
+      border-radius: var(--radius);
+      width: 90%;
+      max-width: 450px;
+      box-shadow: var(--shadow);
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: scale(.85);
+      transition: transform .3s ease;
+    }
+    
+    .modal.show .modal-content,
+    .modalDepto.show .modalDepto-content {
+      transform: scale(1);
+    }
+    
+    .modal-input-group {
+      margin-bottom: 15px;
+    }
+    
+    .modal-input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+    }
+    
+    .modal-input-group input, 
+    .modal-input-group select {
+      width: 100%;
+    }
+    
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 20px;
+    }
+    
+    .btn-cancelar {
+      background: #6b7280;
+      padding: 10px 16px;
+      border: none;
+      color: white;
+    }
+    
+    .btn-guardar {
+      background: var(--accent1);
+      padding: 10px 16px;
+      border: none;
+      color: white;
+    }
+    
+    /* SECCIÓN DE CÁMARAS DE SEGURIDAD */
+    .camaras-container {
+      margin-top: 30px;
+    }
+    
+    .camaras-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .camaras-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    
+    .camara-card {
+      background: #0d1a29;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      transition: transform 0.3s ease;
+    }
+    
+    .camara-card:hover {
+      transform: translateY(-5px);
+    }
+    
+    .camara-header {
+      padding: 12px 15px;
+      background: #162235;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .camara-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .camara-status {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    
+    .status-online {
+      background: #10b981;
+    }
+    
+    .status-offline {
+      background: #ef4444;
+    }
+    
+    .camara-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .camara-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .camara-video {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .camara-footer {
+      padding: 10px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    
+    .camara-location {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .camara-type {
+      background: #1e293b;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    
+    /* Responsividad */
+    @media (max-width: 768px) {
+      .filters {
+        flex-direction: column;
+      }
+      
+      select, input {
+        width: 100%;
+      }
+      
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+      
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .camaras-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .camaras-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h2>📡 Panel de Monitoreo — Seguridad</h2>
+  <div class="user">👤 Usuario Corporativo</div>
+  
+</header>
+
+<div class="filters">
+  <select id="filtroCiudad">
+    <option value="">Todas las ciudades</option>
+    <option>Temuco</option>
+    <option>Valdivia</option>
+    <option>Puerto Montt</option>
+  </select>
+
+  <select id="filtroDepto">
+    <option value="">Todos los departamentos</option>
+    <option>Desarrollo</option>
+    <option>Ciberseguridad</option>
+    <option>Infraestructura</option>
+  </select>
+
+  <select id="filtroCamara">
+    <option value="normal">🎥 Normal</option>
+    <option value="noche">🌙 Visión nocturna</option>
+    <option value="termica">🔥 Visión térmica</option>
+  </select>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tarea</th>
+      <th>Ciudad</th>
+      <th>Depto</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody id="listaTareas"></tbody>
+</table>
+
+<button class="btn-agregar" onclick="abrirModal()">+ Nueva Tarea</button>
+
+<h3 style="margin-top:20px">🗺️ Ubicación de Cámaras</h3>
+<div id="mapa"></div>
+
+<div id="contenedorCamara">
+  <video id="camaraSimulada" autoplay loop muted>
+    <source id="srcVideo" type="video/mp4">
+  </video>
+</div>
+
+<!-- NUEVA SECCIÓN: Cámaras de Seguridad -->
+<div class="camaras-container">
+  <div class="camaras-header">
+    <h3>📹 Cámaras de Seguridad Activas</h3>
+    <div>
+      <button id="toggleAllCameras" class="btn-agregar" style="margin-top: 0;">
+        <i class="fas fa-eye"></i> Mostrar/Ocultar Todas
+      </button>
+    </div>
+  </div>
+  
+  <div class="camaras-grid" id="camarasGrid">
+    <!-- Las cámaras se cargarán dinámicamente con JavaScript -->
+  </div>
+</div>
+
+<!-- 📍 SECCIÓN DE MODALES AL FINAL -->
+<section id="modalsSection">
+
+  <!-- MODAL CRUD -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <h3 id="tituloModal"></h3>
+      
+      <div class="modal-input-group">
+        <label for="inputNombre">Nombre de la tarea</label>
+        <input id="inputNombre" placeholder="Ingrese nombre de la tarea">
+      </div>
+      
+      <div class="modal-input-group">
+        <label for="inputCiudad">Ciudad</label>
+        <select id="inputCiudad">
+          <option value="">Seleccione una ciudad</option>
+          <option>Temuco</option>
+          <option>Valdivia</option>
+          <option>Puerto Montt</option>
+        </select>
+      </div>
+      
+      <div class="modal-input-group">
+        <label for="inputDepto">Departamento</label>
+        <select id="inputDepto">
+          <option value="">Seleccione un departamento</option>
+          <option>Desarrollo</option>
+          <option>Ciberseguridad</option>
+          <option>Infraestructura</option>
+        </select>
+      </div>
+      
+      <div class="modal-input-group">
+        <label for="inputEstado">Estado</label>
+        <select id="inputEstado">
+          <option>Pendiente</option>
+          <option>En progreso</option>
+          <option>Completada</option>
+        </select>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn-cancelar" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn-guardar" onclick="guardarTarea()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DEPARTAMENTO -->
+  <div id="modalDepto" class="modalDepto">
+    <div class="modalDepto-content">
+      <h3 id="nombreDepto"></h3>
+      <img id="imgDepto" style="width:100%;margin:10px 0;border-radius:12px">
+      <video id="videoDepto" autoplay loop muted style="width:100%;border-radius:12px"></video>
+      <button class="btn-eliminar" style="margin-top:14px" onclick="cerrarModalDepto()">Cerrar</button>
+    </div>
+  </div>
+
+</section>
+
+<script>
+  /* DATOS */
+  const camaras = {
+    "Temuco": {
+      lat: -38.7359,
+      lon: -72.5904,
+      video: "https://cdn.pixabay.com/video/2021/09/01/87862-597580018_tiny.mp4",
+      depto: {
+        img: "https://www.sensecorp.com/wp-content/uploads/2020/07/Data-Flow.png",
+        video: "https://cdn.pixabay.com/video/2024/01/02/197569-904534080_tiny.mp4",
+        nombre: "Infraestructura — Flujo de Servicios"
+      },
+      camarasSeguridad: [
+        {
+          id: 1,
+          nombre: "Cámara Entrada Principal",
+          tipo: "Exterior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2021/09/01/87862-597580018_tiny.mp4"
+        },
+        {
+          id: 2,
+          nombre: "Cámara Estacionamiento",
+          tipo: "Exterior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2022/06/30/122931-725962364_tiny.mp4"
+        },
+        {
+          id: 3,
+          nombre: "Cámara Recepción",
+          tipo: "Interior",
+          estado: "offline",
+          video: "https://cdn.pixabay.com/video/2019/05/17/23220-337272901_tiny.mp4"
+        }
+      ]
+    },
+    "Valdivia": {
+      lat: -39.8196,
+      lon: -73.2452,
+      video: "https://cdn.pixabay.com/video/2022/06/30/122931-725962364_tiny.mp4",
+      depto: {
+        img: "https://miro.medium.com/v2/resize:fit:828/format:webp/1*GyrZJY0PHpLPxNUFDXL9xA.png",
+        video: "https://cdn.pixabay.com/video/2016/08/20/8690-180303098_tiny.mp4",
+        nombre: "Ciberseguridad — Monitoreo & Alertas"
+      },
+      camarasSeguridad: [
+        {
+          id: 4,
+          nombre: "Cámara Sala Servidores",
+          tipo: "Interior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2022/06/30/122931-725962364_tiny.mp4"
+        },
+        {
+          id: 5,
+          nombre: "Cámara Acceso Trasero",
+          tipo: "Exterior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2024/01/02/197569-904534080_tiny.mp4"
+        }
+      ]
+    },
+    "Puerto Montt": {
+      lat: -41.4689,
+      lon: -72.9411,
+      video: "https://cdn.pixabay.com/video/2019/05/17/23220-337272901_tiny.mp4",
+      depto: {
+        img: "https://miro.medium.com/v2/resize:fit:828/format:webp/1*DUu7Nys8lm2Sleqrs9jw-g.png",
+        video: "https://cdn.pixabay.com/video/2022/02/11/108480-685994980_tiny.mp4",
+        nombre: "Desarrollo — Pipeline CI/CD"
+      },
+      camarasSeguridad: [
+        {
+          id: 6,
+          nombre: "Cámara Zona Desarrollo",
+          tipo: "Interior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2022/02/11/108480-685994980_tiny.mp4"
+        },
+        {
+          id: 7,
+          nombre: "Cámara Cafetería",
+          tipo: "Interior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2016/08/20/8690-180303098_tiny.mp4"
+        },
+        {
+          id: 8,
+          nombre: "Cámara Exterior Norte",
+          tipo: "Exterior",
+          estado: "online",
+          video: "https://cdn.pixabay.com/video/2019/05/17/23220-337272901_tiny.mp4"
+        }
+      ]
+    }
+  };
+
+  /* TAREAS */
+  let tareas = JSON.parse(localStorage.getItem("tareas")) || [
+    { id: 1, nombre: "Deploy API", ciudad: "Temuco", depto: "Desarrollo", estado: "Pendiente" },
+    { id: 2, nombre: "Firewall Audit", ciudad: "Valdivia", depto: "Ciberseguridad", estado: "En progreso" },
+    { id: 3, nombre: "Servidores", ciudad: "Puerto Montt", depto: "Infraestructura", estado: "Completada" },
+  ];
+  
+  let editId = null;
+  let camarasVisibles = true;
+
+  // Funciones auxiliares
+  function estadoClase(e) {
+    return e === "Pendiente" ? "pendiente" : e === "En progreso" ? "progreso" : "completada";
+  }
+
+  function limpiarModal() {
+    inputNombre.value = "";
+    inputCiudad.value = "";
+    inputDepto.value = "";
+    inputEstado.value = "Pendiente";
+    editId = null;
+  }
+
+  function validarFormulario() {
+    if (!inputNombre.value.trim()) {
+      alert("El nombre de la tarea es obligatorio");
+      return false;
+    }
+    
+    if (!inputCiudad.value) {
+      alert("Debe seleccionar una ciudad");
+      return false;
+    }
+    
+    if (!inputDepto.value) {
+      alert("Debe seleccionar un departamento");
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Renderizar tabla de tareas
+  function render() {
+    const listaTareas = document.getElementById("listaTareas");
+    const ciudad = filtroCiudad.value;
+    const depto = filtroDepto.value;
+    
+    listaTareas.innerHTML = "";
+    
+    tareas
+      .filter(t => (!ciudad || t.ciudad === ciudad) && (!depto || t.depto === depto))
+      .forEach(t => {
+        listaTareas.innerHTML += `
+          <tr>
+            <td>${t.nombre}</td>
+            <td>${t.ciudad}</td>
+            <td>${t.depto}</td>
+            <td><span class="status ${estadoClase(t.estado)}">${t.estado}</span></td>
+            <td>
+              <button class="btn-editar" onclick="editarTarea(${t.id})">✏</button>
+              <button class="btn-eliminar" onclick="eliminarTarea(${t.id})">🗑</button>
+            </td>
+          </tr>`;
+      });
+    
+    localStorage.setItem("tareas", JSON.stringify(tareas));
+  }
+
+  // Funciones CRUD
+  function abrirModal(id = null) {
+    editId = id;
+    tituloModal.textContent = id ? "Editar Tarea" : "Nueva Tarea";
+    
+    if (id) {
+      // Modo edición: cargar datos existentes
+      const tarea = tareas.find(t => t.id === id);
+      inputNombre.value = tarea.nombre;
+      inputCiudad.value = tarea.ciudad;
+      inputDepto.value = tarea.depto;
+      inputEstado.value = tarea.estado;
+    } else {
+      // Modo nuevo: limpiar campos
+      limpiarModal();
+    }
+    
+    modal.classList.add("show");
+    document.body.classList.add("modal-open");
+  }
+
+  function cerrarModal() {
+    modal.classList.remove("show");
+    document.body.classList.remove("modal-open");
+    limpiarModal();
+  }
+
+  function guardarTarea() {
+    if (!validarFormulario()) return;
+    
+    if (editId) {
+      // Actualizar tarea existente
+      const index = tareas.findIndex(t => t.id === editId);
+      if (index !== -1) {
+        tareas[index] = {
+          id: editId,
+          nombre: inputNombre.value,
+          ciudad: inputCiudad.value,
+          depto: inputDepto.value,
+          estado: inputEstado.value
+        };
+      }
+    } else {
+      // Crear nueva tarea
+      tareas.push({
+        id: Date.now(),
+        nombre: inputNombre.value,
+        ciudad: inputCiudad.value,
+        depto: inputDepto.value,
+        estado: inputEstado.value
+      });
+    }
+    
+    cerrarModal();
+    render();
+  }
+
+  function editarTarea(id) {
+    abrirModal(id);
+  }
+
+  function eliminarTarea(id) {
+    if (confirm("¿Está seguro de que desea eliminar esta tarea?")) {
+      tareas = tareas.filter(t => t.id !== id);
+      render();
+    }
+  }
+
+  // MODAL DEPARTAMENTO
+  function mostrarDepto(ciudad) {
+    let info = camaras[ciudad].depto;
+    nombreDepto.textContent = info.nombre;
+    imgDepto.src = info.img;
+    videoDepto.src = info.video;
+    modalDepto.classList.add("show");
+    document.body.classList.add("modal-open");
+  }
+
+  function cerrarModalDepto() {
+    modalDepto.classList.remove("show");
+    document.body.classList.remove("modal-open");
+  }
+
+  // CÁMARAS DE SEGURIDAD
+  function cargarCamarasSeguridad() {
+    const camarasGrid = document.getElementById("camarasGrid");
+    camarasGrid.innerHTML = "";
+    
+    const ciudadFiltro = filtroCiudad.value;
+    
+    // Obtener todas las cámaras o filtrar por ciudad
+    let todasLasCamaras = [];
+    if (ciudadFiltro) {
+      todasLasCamaras = camaras[ciudadFiltro].camarasSeguridad;
+    } else {
+      Object.values(camaras).forEach(ciudad => {
+        todasLasCamaras = todasLasCamaras.concat(ciudad.camarasSeguridad);
+      });
+    }
+    
+    // Crear tarjetas para cada cámara
+    todasLasCamaras.forEach(camara => {
+      const camaraCard = document.createElement("div");
+      camaraCard.className = "camara-card";
+      
+      camaraCard.innerHTML = `
+        <div class="camara-header">
+          <div class="camara-info">
+            <div class="camara-status ${camara.estado === 'online' ? 'status-online' : 'status-offline'}"></div>
+            <span>${camara.nombre}</span>
+          </div>
+          <div class="camara-actions">
+            <button class="camara-btn" onclick="toggleCamara(this)">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button class="camara-btn" onclick="expandirCamara(${camara.id})">
+              <i class="fas fa-expand"></i>
+            </button>
+          </div>
+        </div>
+        <video class="camara-video" autoplay loop muted>
+          <source src="${camara.video}" type="video/mp4">
+        </video>
+        <div class="camara-footer">
+          <div class="camara-location">
+            <i class="fas fa-map-marker-alt"></i>
+            <span>${obtenerCiudadCamara(camara.id)}</span>
+          </div>
+          <div class="camara-type">${camara.tipo}</div>
+        </div>
+      `;
+      
+      camarasGrid.appendChild(camaraCard);
+    });
+  }
+  
+  function obtenerCiudadCamara(idCamara) {
+    for (const [ciudad, datos] of Object.entries(camaras)) {
+      if (datos.camarasSeguridad.some(cam => cam.id === idCamara)) {
+        return ciudad;
+      }
+    }
+    return "Desconocida";
+  }
+  
+  function toggleCamara(boton) {
+    const video = boton.closest('.camara-card').querySelector('.camara-video');
+    const icono = boton.querySelector('i');
+    
+    if (video.style.display === 'none') {
+      video.style.display = 'block';
+      icono.className = 'fas fa-eye';
+    } else {
+      video.style.display = 'none';
+      icono.className = 'fas fa-eye-slash';
+    }
+  }
+  
+  function toggleTodasLasCamaras() {
+    const videos = document.querySelectorAll('.camara-video');
+    const botones = document.querySelectorAll('.camara-btn i.fa-eye, .camara-btn i.fa-eye-slash');
+    
+    if (camarasVisibles) {
+      videos.forEach(video => video.style.display = 'none');
+      botones.forEach(icono => icono.className = 'fas fa-eye-slash');
+      camarasVisibles = false;
+    } else {
+      videos.forEach(video => video.style.display = 'block');
+      botones.forEach(icono => icono.className = 'fas fa-eye');
+      camarasVisibles = true;
+    }
+  }
+  
+  function expandirCamara(idCamara) {
+    // Buscar la cámara por ID
+    let camaraSeleccionada = null;
+    for (const ciudad of Object.values(camaras)) {
+      camaraSeleccionada = ciudad.camarasSeguridad.find(cam => cam.id === idCamara);
+      if (camaraSeleccionada) break;
+    }
+    
+    if (camaraSeleccionada) {
+      // Actualizar la cámara simulada principal con la cámara seleccionada
+      srcVideo.src = camaraSeleccionada.video;
+      videoPrincipal.load();
+      
+      // Desplazar hacia la cámara simulada principal
+      document.getElementById('contenedorCamara').scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+
+  // Inicialización y eventos
+  document.addEventListener("DOMContentLoaded", function() {
+    // Eventos para cerrar modales
+    modal.onclick = e => {
+      if (e.target === modal) cerrarModal();
+    };
+    
+    modalDepto.onclick = e => {
+      if (e.target === modalDepto) cerrarModalDepto();
+    };
+    
+    // ESC para cerrar modales
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") {
+        cerrarModal();
+        cerrarModalDepto();
+      }
+    });
+    
+    // Inicializar mapa
+    let map = L.map("mapa").setView([-39.7, -72.95], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+    
+    // Añadir marcadores al mapa
+    Object.entries(camaras).forEach(([city, data]) => {
+      L.marker([data.lat, data.lon])
+        .addTo(map)
+        .on("click", () => {
+          actualizarCCTV(city);
+          mostrarDepto(city);
+        });
+    });
+    
+    // Inicializar cámara
+    const videoPrincipal = document.getElementById("camaraSimulada");
+    const src = document.getElementById("srcVideo");
+    
+    function actualizarCCTV(ciudad) {
+      if (ciudad && camaras[ciudad]) {
+        src.src = camaras[ciudad].video;
+        videoPrincipal.load();
+      }
+    }
+    
+    // Eventos de filtros
+    filtroCiudad.onchange = () => {
+      render();
+      actualizarCCTV(filtroCiudad.value);
+      cargarCamarasSeguridad();
+    };
+    
+    filtroCamara.onchange = () => {
+      switch(filtroCamara.value) {
+        case "noche":
+          videoPrincipal.style.filter = "brightness(.4) contrast(2)";
+          break;
+        case "termica":
+          videoPrincipal.style.filter = "hue-rotate(180deg) saturate(3)";
+          break;
+        default:
+          videoPrincipal.style.filter = "none";
+      }
+    };
+    
+    // Botón para mostrar/ocultar todas las cámaras
+    document.getElementById('toggleAllCameras').addEventListener('click', toggleTodasLasCamaras);
+    
+    // Renderizar tabla inicial y cargar cámaras
+    render();
+    cargarCamarasSeguridad();
+  });
+</script>
+</body>
+</html>
